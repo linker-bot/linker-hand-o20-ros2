@@ -47,7 +47,7 @@ $ ls -l /dev/
 lrwxrwxrwx   1 root       root           7 10月 11 08:50 O20_right -> ttyUSB0
 ```
 
-&ensp;&ensp; __使用前请先将单手[linker_hand_o20.launch.py]() or 双手[linker_hand_o20_double.launch.py]()文件按照实际灵巧手参数进行配置.__
+&ensp;&ensp; __使用前请先将单手[linker_hand_o20.launch.py](https://github.com/linker-bot/linker-hand-o20-ros2/blob/main/linker_hand_o20/launch/linker_hand_o20.launch.py) or 双手[linker_hand_o20.launch.py](https://github.com/linker-bot/linker-hand-o20-ros2/blob/main/linker_hand_o20/launch/linker_hand_o20.launch.py)文件按照实际灵巧手参数进行配置.__
 
 - 启动SDK单手&ensp;&ensp;&ensp;&ensp;将linker_hand灵巧手的USB设备插入Ubuntu设备上  支持型号:O20
 - 启动SDK双手&ensp;&ensp;&ensp;&ensp;先将左手linker_hand灵巧手的USB设备插入Ubuntu设备上，一般被识别为/dev/ttyUSB0。再将右手linker_hand灵巧手的USB设备插入Ubuntu设备上，一般识别为/dev/ttyUSB1.  支持型号:O20
@@ -87,9 +87,9 @@ lrwxrwxrwx   1 root       root           7 10月 11 08:50 O20_right -> ttyUSB0
 
 ## 使用 for WIN+ROS2
 
-&ensp;&ensp; __使用前请先将 [linker_hand.launch.py]()文件按照实际灵巧手参数进行配置.__
+&ensp;&ensp; __使用前请先将 [linker_hand_o20.launch.py](https://github.com/linker-bot/linker-hand-o20-ros2/blob/main/linker_hand_o20/launch/linker_hand_o20.launch.py)文件按照实际灵巧手参数进行配置.__
 
-- 启动SDK&ensp;&ensp;&ensp;&ensp;将linker_hand灵巧手的USB转CAN设备插入WIN系统设备上  支持型号:L7/L10/L20/L21/L25
+- 启动SDK&ensp;&ensp;&ensp;&ensp;将linker_hand灵巧手的USB转CAN设备插入WIN系统设备上  支持型号:O20
 - 注：安装好USB转CAN驱动后才可使用
 ```bash
   $ mkdir -p linker_hand_o20_ros2/src
@@ -172,7 +172,7 @@ $ ros2 launch rock_paper_scissors rock_paper_scissors.launch.py
 gui_control界面控制灵巧手需要启动linkerhand-ros2-sdk，以topic的形式对LinkerHand灵巧手进行操作
 开启ROS2 SDK后
 
-&ensp;&ensp; __使用前请先将 [gui_control.launch.py]()文件按照实际灵巧手参数进行配置.__
+&ensp;&ensp; __使用前请先将 [gui_control.launch.py](https://github.com/linker-bot/linker-hand-o20-ros2/blob/main/gui_control/launch/gui_control.launch.py)文件按照实际灵巧手参数进行配置.__
 ```bash
 # 新开终端
 $ cd linker_hand_o20_ros2/
@@ -182,7 +182,7 @@ $ ros2 launch gui_control gui_control.launch.py
 开启后会弹出UI界面。通过滑动条可控制相应LinkerHand灵巧手关节运动
 
 ## WIN+ROS2环境下使用GUI
-&ensp;&ensp; __使用前请先将 [gui_control.launch.py]()文件按照实际灵巧手参数进行配置.__
+&ensp;&ensp; __使用前请先将 [gui_control.launch.py](https://github.com/linker-bot/linker-hand-o20-ros2/blob/main/gui_control/launch/gui_control.launch.py)文件按照实际灵巧手参数进行配置.__
 ```bash
 # 新开终端
 $ cd linker_hand_o20_ros2/

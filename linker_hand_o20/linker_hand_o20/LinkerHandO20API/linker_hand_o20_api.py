@@ -11,7 +11,29 @@ from .core.linker_hand_o20_u2d2 import LinerHandO20U2D2
 # 旋转方向只作为标记，不代表实际意义
 # 最小值为正转，最大值为负转，中间值为初始点
 LIMIT_TYPE = 1 # 0: 最大值限制 1: 中间值值限制
-MOTOR_LIMIT = {
+MOTOR_LIMIT_LEFT = {
+    1: [89.91, 180, 271.76, 1],
+    2: [88.51, 180, 271.32, 1],
+    3: [89.21, 180, 192.04, 1],
+    4: [272.08, 90, 180.32, 1],
+    5: [86.66, 180, 270.35, -1],
+    6: [92.22, 180, 270.97, -1],
+    7: [272.02, 270, 177.1, -1],
+    8: [146.16, 180, 194.68, 1],
+    9: [88.68, 180, 272.02, -1],
+    10: [89.91, 180, 270.02, -1],
+    11: [271.05, 270, 185.1, -1],
+    12: [147.74, 180, 212.52, 1],
+    13: [88.24, 180, 270.63, -1],
+    14: [91.23, 180, 270.09, -1],
+    15: [271.49, 270, 178.07, -1],
+    16: [165.15, 180, 215.68, 1],
+    17: [271.05, 180, 90.18, -1],
+    18: [272.11, 180, 89.12, -1],
+    19: [238.01, 180, 90.18, -1],
+    20: [38.62, 180, 210.67, 1],
+}
+MOTOR_LIMIT_RIGHT = {
     1: [272.1, 180, 89.3, 1],
     2: [271.3, 180, 89.4, 1],
     3: [271.5, 180, 168.0, 1],
@@ -28,28 +50,36 @@ MOTOR_LIMIT = {
     14: [90.1, 180, 272.3, -1],
     15: [270.7, 270, 177.6, -1],
     16: [193.3, 180, 143.0, 1],
-    17: [89.2, 180, 270.1, -1],
-    18: [88.9, 180, 270.6, -1],
+    17: [270.1, 180, 89.2, -1],
+    18: [270.6, 180, 88.9, -1],
     19: [119.5, 180, 271.5, -1],
-    20: [377.0, 180, 241.0, 1],
+    20: [331.0, 180, 149.0, 1],
 }
 class LinkerHandO20API:
-    def __init__(self,port: str):
+    def __init__(self,port: str,hand_type = "right"):
+        self.hand_type = hand_type
+        if hand_type == "right":
+            self.motor_limit = MOTOR_LIMIT_RIGHT
+        else:
+            self.motor_limit = MOTOR_LIMIT_LEFT
         self.hand = LinerHandO20U2D2(port=port)
         self.is_teleoperated = False
         self.ids = self._connect()
 
     def _connect(self)->list:
-        ColorMsg(msg=f"扫描电机中....", color="green")
+        ColorMsg(msg=f"{self.hand_type}-扫描电机中....", color="green")
         ids = self.hand.scan_ids(print_progress=True)
         if len(ids) != 0:
+            # 设置电流
+            self.hand.set_currents_safe()
+            time.sleep(1)
             self.hand.set_torques(True)
         for id in range(len(ids)):
             a = self.hand.read_torque(ids[id])
             if a == True:
-                ColorMsg(msg=f"电机ID:{ids[id]} 以在线，扭矩设置成功", color="green")
+                ColorMsg(msg=f"电机ID:{self.hand_type}-{ids[id]} 以在线，扭矩设置成功", color="green")
             else:
-                ColorMsg(msg=f"电机ID:{ids[id]} 扭矩设置失败", color="red")
+                ColorMsg(msg=f"电机ID:{self.hand_type}-{ids[id]} 扭矩设置失败", color="red")
         return ids
 
     def motor_enable_all(self):
@@ -58,9 +88,9 @@ class LinkerHandO20API:
         for id in range(len(self.ids)):
             a = self.hand.read_torque(self.ids[id])
             if a == True:
-                ColorMsg(msg=f"电机ID:{self.ids[id]} 以在线，使能状态", color="green")
+                ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 以在线，使能状态", color="green")
             else:
-                ColorMsg(msg=f"电机ID:{self.ids[id]} 失能状态", color="red")
+                ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 失能状态", color="red")
 
     def motor_enable_by_id(self,id: int):
         """根据电机ID使能"""
@@ -72,9 +102,9 @@ class LinkerHandO20API:
         for id in range(len(self.ids)):
             a = self.hand.read_torque(self.ids[id])
             if a == True:
-                ColorMsg(msg=f"电机ID:{self.ids[id]} 以在线，使能状态", color="green")
+                ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 以在线，使能状态", color="green")
             else:
-                ColorMsg(msg=f"电机ID:{self.ids[id]} 失能状态", color="red")
+                ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 失能状态", color="red")
 
     def set_pos_pid(self, pid_dict: Dict[int, Dict[str, int]]):
         """
@@ -96,9 +126,9 @@ class LinkerHandO20API:
 
     def map_to_limit_angle(self, motor_id: int, degree_0_255: float, dir=True) -> float:
         """根据电机ID和范围值转换为限位内角度值"""
-        if motor_id not in MOTOR_LIMIT:
-            raise ValueError(f"电机 ID {motor_id} 不在限位表 MOTOR_LIMIT 中")
-        lo, mid, hi, direction = MOTOR_LIMIT[motor_id]
+        if motor_id not in self.motor_limit:
+            raise ValueError(f"电机 ID {motor_id} 不在限位表 {self.motor_limit} 中")
+        lo, mid, hi, direction = self.motor_limit[motor_id]
         degree_0_255 = max(0.0, min(255.0, degree_0_255))
         if LIMIT_TYPE == 1:
             if motor_id == 4 or motor_id == 7 or motor_id == 11 or motor_id == 15 or motor_id == 16 or motor_id == 19 or motor_id == 8 or motor_id == 12:
@@ -107,6 +137,7 @@ class LinkerHandO20API:
                 hi = mid
         if motor_id == 15 or motor_id == 11 or motor_id == 7:
             dir = False
+
         if dir == True:          # 0→lo，255→hi
             angle = lo + (hi - lo) * degree_0_255 / 255.0
         else:                       # 0→hi，255→lo
@@ -117,41 +148,16 @@ class LinkerHandO20API:
         angle = max(lower, min(upper, angle))
         return angle
     
-    # def angle_to_0_255(self, motor_id: int, angle: float,dir=True) -> float:
-    #     """
-    #     把机械限位角度反算成 0.0~255.0 的指令值
-    #     输入 angle 允许超出[lo,hi]，会被先clamp到物理范围
-    #     返回 0.0~255.0
-    #     """
-    #     if motor_id not in MOTOR_LIMIT:
-    #         raise ValueError(f"电机 ID {motor_id} 不在限位表 MOTOR_LIMIT 中")
-
-    #     lo, mid, hi, direction = MOTOR_LIMIT[motor_id]
-    #     if LIMIT_TYPE == 1:
-    #         if motor_id == 4 or motor_id == 7 or motor_id == 11 or motor_id == 15 or motor_id == 16 or motor_id == 19:
-    #             hi = hi
-    #         else:
-    #             hi = mid
-    #     # 先clamp到物理允许范围
-    #     lower, upper = sorted((lo, hi))
-    #     angle = max(lower, min(upper, angle))
-    #     if motor_id == 15 or motor_id == 11 or motor_id == 7:
-    #         dir = False
-    #     if dir == True:          # lo→0, hi→255
-    #         cmd = (angle - lo) / (hi - lo) * 255.0
-    #     else:                       # hi→0, lo→255
-    #         cmd = (hi - angle) / (hi - lo) * 255.0
-
-    #     return max(0.0, min(255.0, cmd))   # 再保险一次
+    
     def angle_to_0_255(self, motor_id: int, angle: float, dir: bool = True) -> float:
         """
         将实际角度反算回 0-255 的整型范围（浮点返回值，可再 round/int）
         是 map_to_limit_angle 的严格逆运算。
         """
-        if motor_id not in MOTOR_LIMIT:
-            raise ValueError(f"电机 ID {motor_id} 不在限位表 MOTOR_LIMIT 中")
+        if motor_id not in self.motor_limit:
+            raise ValueError(f"电机 ID {motor_id} 不在限位表 {self.motor_limit} 中")
 
-        lo, mid, hi, direction = MOTOR_LIMIT[motor_id]
+        lo, mid, hi, direction = self.motor_limit[motor_id]
 
         # 1. 与 map_to_limit_angle 保持同一套限幅逻辑
         if LIMIT_TYPE == 1:
@@ -181,6 +187,9 @@ class LinkerHandO20API:
         # if len(currents) < 20:
         #     raise ValueError(f"数据长度错误:{currents}")
         self.hand.set_currents_sync(curr=currents)
+    def set_currents_safe(self):
+        """设置默认电流为80% 尽量不让电机过流失能"""
+        self.hand.set_currents_safe()
 
     def set_position(self,position: Dict[int, float]) -> None:
         if len(position) < 20:
@@ -191,6 +200,7 @@ class LinkerHandO20API:
     def set_position_single(self,position: Dict[int, float]) -> None:
         """单个电机设置位置"""
         self.hand.set_angles(deg=position)
+
 
     """===========================获取状态方法===================================="""
     def get_status(self, range=False) -> Dict[int, float]:
@@ -235,8 +245,20 @@ class LinkerHandO20API:
         velocity = self.hand.read_all_velocity_sync(ids=self.ids)
         return velocity
     
+    # def set_speed(self,speed={}):
+    #     self.hand.set_velocity_limits(limit_dict=speed)
+    
+
+    def clear_error(self, motor_id: int) -> bool:
+        
+        return self.hand.clear_error(motor_id=motor_id)
+
+
     def disconnect(self):
-        self.hand.set_torques(False)
+        try:
+            self.hand.set_torques(False)
+        except RuntimeError as e:
+            print(f"[WARN] 关扭矩时串口忙，直接关闭端口: {e}")
         self.hand.close()
 
 

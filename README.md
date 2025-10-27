@@ -32,9 +32,12 @@ ATTRS{idVendor}=="0403" # 将值改为查到的数值
 ATTRS{idProduct}=="6014"
 ATTRS{serial}=="FT12345678"
 # 将设备信息写入udev规则文件
-$ sudo nano /etc/udev/rules.d/99-ft232h.rules
+$ sudo vim /etc/udev/rules.d/99-ft232h.rules
 # 写入以下内容,将值改为查到的数值 SYMLINK的值改为你期望的字符串，然后保存退出  注意：遥操模式下，应该是两个设备，注意区分SYMLINK名称
 SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FTAA09QS", MODE="0666",  OWNER="root", SYMLINK+="O20_right"
+
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FTAA08AV", MODE="0666",  OWNER="root", SYMLINK+="O20_left"
+
 
 SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FTAA07LJ", MODE="0666",  OWNER="root", SYMLINK+="O20_right_master"
 
@@ -142,11 +145,30 @@ $ ros2 launch linker_hand_o20 linker_hand_o20_teleoperated_master.launch.py
 # 将主动遥操端食指指尖、中指指尖、手动向手背方向摆动到极限位置，将无名指指尖向手心方向摆动到极限位置，1秒后退出遥操模式。
 ```
 
+## 左右双手控制
+```bash
+# 新开终端开启GUI控制界面
+# 修改linker_hand_o20.launch.py文件，将is_slave设置为False，开启被注销掉的右手灵巧手O20，将is_slave设置为False
+$ sudo vim src/linker_hand_o20/launch/linker_hand_o20.launch.py
+$ source ./install/setup.bash
+# 开启左右双手灵巧手O20
+$ ros2 launch linker_hand_o20 linker_hand_o20.launch.py
+# gui_control界面控制左右双手灵巧手O20，修改gui_control.launch.py文件中的参数，开启被注销掉的右手gui控制节点。
+# 新开终端开启GUI控制界面
+$ sudo vim src/gui_control/launch/gui_control.launch.py
+$ source ./install/setup.bash
+$ ros2 launch gui_control gui_control.launch.py
+```
+
+
 - position手指关节顺序
 
   O6:  ["拇指根部", "食指根部", "中指根部", "无名指根部", "小指根部", "拇指侧摆", "食指侧摆", "中指侧摆", "无名指侧摆", "小指侧摆", "拇指旋转", "食指中部", "中指中部", "无名指中部", "小拇指旋转", "拇指尖部", "食指末端", "中指末端", "无名指末端", "小指末端"],
 
 ## 版本更新
+
+- > ### release_1.1.1
+ - 1、支持O20版本灵巧手左右双手控制
 
 - > ### release_1.0.1
  - 1、支持O20版本灵巧手

@@ -6,6 +6,7 @@ xc330_strict_id.py  ——  “必须显式传 motor_id”的 all-in-one 类
 """
 import time
 from dynamixel_sdk import *
+from dynamixel_sdk import COMM_SUCCESS
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional, Union
 
@@ -394,10 +395,10 @@ class LinerHandO20U2D2:
     #  GroupBulkWrite 写入，用于各种控制,私有快捷通道：u8/u16/u32
     # ------------------------------------------------------
     def _bulk_write_dict(self, id_val: Dict[int, int], addr: int, length: int) -> None:
-        """内部通用：按字典批量写，自动 ≤16 分段"""
         ids = list(id_val.keys())
         for i in range(0, len(ids), 16):
             chunk = ids[i:i + 16]
+            # ****** 每次 new ******
             gbw = GroupBulkWrite(self.port_h, self.pack_h)
             for cid in chunk:
                 v = id_val[cid]
@@ -407,16 +408,19 @@ class LinerHandO20U2D2:
                     gbw.addParam(cid, addr, 2, [v & 0xFF, (v >> 8) & 0xFF])
                 elif length == 4:
                     gbw.addParam(cid, addr, 4,
-                                 [v & 0xFF, (v >> 8) & 0xFF,
-                                  (v >> 16) & 0xFF, (v >> 24) & 0xFF])
+                                [v & 0xFF, (v >> 8) & 0xFF,
+                                (v >> 16) & 0xFF, (v >> 24) & 0xFF])
             res = gbw.txPacket()
             if res != COMM_SUCCESS:
                 raise RuntimeError(f"BulkWrite 错误（addr=0x{addr:02X}）：{self.pack_h.getTxRxResult(res)}")
 
     # ===================== 写入电流 =====================
-    def set_currents(self, curr: Dict[int, int]) -> None:
-        """设置电流 params:{3:200, 6:300, 11:250, 18:200, 20:300} 单位 mA"""
-        self._bulk_write_dict(curr, ADDR_GOAL_CURRENT, 2)
+    # def set_currents(self, curr: Dict[int, int]) -> None:
+    #     """设置电流 params:{3:200, 6:300, 11:250, 18:200, 20:300} 单位 mA"""
+    #     #self._bulk_write_dict(curr, ADDR_GOAL_CURRENT, 2)
+    #     rated = 1100          # XC330 额定 1.1 A，可按型号改
+    #     self._sync_write_dict({i: int(rated * 0.6) for i in ids},
+    #                         ADDR_CURRENT_LIMIT, 2)
 
     # ===================== 写入扭矩 =====================
     def set_torques(self, on: Union[bool, Dict[int, bool]]) -> None:
@@ -541,29 +545,61 @@ class LinerHandO20U2D2:
     # -------------------------------------------------
     # GroupSyncWrite 写入方法，用于各种控制
     # -------------------------------------------------
+    # def _sync_write_dict(self, id_val: Dict[int, int], addr: int, length: int) -> None:
+    #     """内部通用：字典驱动 SyncWrite，自动 ≤16 分段"""
+    #     ids = list(id_val.keys())
+    #     for i in range(0, len(ids), 16):
+    #         chunk = ids[i:i + 16]
+    #         # ****** 关键：每次都 new ******
+    #         gsw = GroupSyncWrite(self.port_h, self.pack_h, addr, length)
+    #         for cid in chunk:
+    #             v = id_val[cid]
+    #             param = []
+    #             for n in range(length):
+    #                 param.append((v >> (8 * n)) & 0xFF)
+    #             if not gsw.addParam(cid, param):
+    #                 raise RuntimeError(f"SyncWrite 添加 ID{cid} 失败")
+    #         res = gsw.txPacket()
+    #         if res != COMM_SUCCESS:
+    #             raise RuntimeError(f"SyncWrite 错误（addr=0x{addr:02X}）：{self.pack_h.getTxRxResult(res)}")
+
     def _sync_write_dict(self, id_val: Dict[int, int], addr: int, length: int) -> None:
-        """内部通用：字典驱动 SyncWrite，自动 ≤16 分段"""
         ids = list(id_val.keys())
         for i in range(0, len(ids), 16):
             chunk = ids[i:i + 16]
-            gsw = GroupSyncWrite(self.port_h, self.pack_h, addr, length)
+            gsw = GroupSyncWrite(self.port_h, self.pack_h, addr, length)  # 局部
             for cid in chunk:
-                v = id_val[cid]
-                if length == 1:
-                    gsw.addParam(cid, [v])
-                elif length == 2:
-                    gsw.addParam(cid, [v & 0xFF, (v >> 8) & 0xFF])
-                elif length == 4:
-                    gsw.addParam(cid, [v & 0xFF, (v >> 8) & 0xFF,
-                                       (v >> 16) & 0xFF, (v >> 24) & 0xFF])
+                param = [(id_val[cid] >> (8 * n)) & 0xFF for n in range(length)]
+                if not gsw.addParam(cid, param):
+                    raise RuntimeError(f"SyncWrite 添加 ID{cid} 失败")
             res = gsw.txPacket()
             if res != COMM_SUCCESS:
                 raise RuntimeError(f"SyncWrite 错误（addr=0x{addr:02X}）：{self.pack_h.getTxRxResult(res)}")
+            # 无需保留，直接销毁
 
     # ===================== 设置电流 sync =====================
     def set_currents_sync(self, curr: Dict[int, int]) -> None:
-        """sync 设置电流 parmas:{3:200, 6:300, 11:250, 18:200, 20:300} 单位 mA"""
-        self._sync_write_dict({3:200, 6:300, 11:250, 18:200, 20:300}, ADDR_GOAL_CURRENT, 2)
+        """sync 设置电流 parmas:{3:200, 6:300, 11:250, 18:200, 20:300} 单位 mA 默认1100"""
+        self._sync_write_dict(curr, ADDR_GOAL_CURRENT, 2)
+
+    def set_currents_safe(self, ids: Optional[List[int]] = None):
+        """
+        批量把 Current Limit 设为额定 70 %
+        默认 1-20 号，可传自己的列表
+        """
+        if ids is None:
+            ids = list(range(1, 21))          # 整手
+
+        RATED_MA = 1100                       # XC330 额定 1.1 A，按型号改
+        limit_ma = int(RATED_MA * 0.8)        # 770 mA
+
+        # 16 个一组，避免协议帧上限
+        for i in range(0, len(ids), 16):
+            chunk = ids[i:i + 16]
+            self._sync_write_dict({cid: limit_ma for cid in chunk},
+                                ADDR_CURRENT_LIMIT, 2)
+        #print(f"Current Limit 60 % → {limit_ma} mA 已下发到 ID {ids}", flush=True)
+        
 
     # ===================== 设置扭矩 sync =====================
     def set_torques_sync(self, on: Union[bool, Dict[int, bool]]) -> None:
@@ -621,6 +657,52 @@ class LinerHandO20U2D2:
             if res == COMM_SUCCESS and err == 0:
                 return True
         return False
+
+
+    def set_velocity_limits(self, limit_dict: Dict[int, float]) -> None:  
+        """  
+        批量设置多个电机的速度阈值  
+        :param limit_dict: {电机ID: 最大速度阈值(RPM)}，如 {1: 300, 2: 250}  
+        """  
+        def rpm_to_unit(rpm: float) -> int:  
+            if rpm < 0:  
+                raise ValueError(f"速度阈值不能为负数（ID={motor_id}）")  # 修正变量名  
+            return int(round(rpm / VELOCITY_UNIT)) & 0xFFFF  # 16位无符号整数  
+
+        unit_dict = {}  
+        for motor_id, rpm in limit_dict.items():  # 循环变量为motor_id
+            print(f"设置电机速度: {motor_id}-{rpm:.2f} RPM", flush=True)   
+            unit_dict[motor_id] = rpm_to_unit(rpm)  
+
+        self._sync_write_dict(unit_dict, ADDR_VELOCITY_LIMIT, 2)  # 同步写入寄存器
+        
+
+    def _read2_no_raise(self, motor_id: int, addr: int) -> int:
+        """
+        与 _read2 相同，但 Hardware-Error 位为 1 时不抛 RxPacketError，
+        而是把错误码打印后返回 -1
+        """
+        from dynamixel_sdk import COMM_SUCCESS
+        data, res, err = self.pack_h.read2ByteTxRx(self.port_h, motor_id, addr)
+        if res != COMM_SUCCESS:
+            print(f"ID{motor_id:02d} 通信失败：{self.pack_h.getTxRxResult(res)}")
+            return -1
+        # err 的 bit7 是 Hardware Error，我们只关心数据，忽略它
+        return data
+
+    
+    
+    
+
+
+    def clear_error(self, motor_id: int) -> bool:
+        try:
+            self._write1(motor_id, ADDR_TORQUE_ENABLE, TORQUE_OFF)
+            hw = self._read2(motor_id, 70)
+            self._write1(motor_id, ADDR_TORQUE_ENABLE, TORQUE_ON)
+            return True
+        except:
+            return False
 
     # ------------------------------------------------------
     #  关闭串口
@@ -692,6 +774,7 @@ if __name__ == "__main__":
     # 批量读取位置 PID
     pid_map = hand.get_pos_pid_sync(ids)
     print(pid_map)
+
 
 
     # for i in ids:

@@ -53,7 +53,7 @@ class LinkerHandO20(Node):
         self.topic_hz = self.get_parameter('topic_hz').value
         self.is_angle = self.get_parameter('is_angle').value
         self.is_slave = self.get_parameter('is_slave').value
-
+        self.hand_lock = threading.Lock()   # 1. 创建锁
 
         self.is_commond = False # 当前是否有setting命令进入
         self.all_current = [-1] * 20
@@ -65,6 +65,10 @@ class LinkerHandO20(Node):
         self._init_hand()
         self._init_pose()
 
+
+
+        
+
         
     def _init_hand(self):
         if self.is_angle == True:
@@ -75,12 +79,10 @@ class LinkerHandO20(Node):
             self.hand_cmd_sub = self.create_subscription(JointState, f"/cb_{self.hand_type}_hand_control_cmd", self.hand_control_cb, 1)
         self.hand_info_pub = self.create_publisher(String, f'/cb_{self.hand_type}_hand_info', 10)
         self.hand_setting_sub = self.create_subscription(String, f"/cb_hand_setting", self.hand_setting_cb, 10)
-        self.hand=LinkerHandO20API(port=self.serial_port)
+        self.hand=LinkerHandO20API(port=self.serial_port, hand_type=self.hand_type)
         time.sleep(1)
-        # 批量设置PID
-        for i in range(1, 21):
-            self.hand.set_pos_pid({i: {"P": 800, "I": 0, "D": 0}})
-        self.hand_lock = Lock()   # 1. 创建锁
+
+        
         self.thread_get_state = threading.Thread(target=self.pub_joint_state)
         self.thread_get_state.daemon = True
         self.thread_get_state.start()
@@ -167,8 +169,6 @@ class LinkerHandO20(Node):
 
     def pub_joint_state(self):
         while rclpy.ok():
-            if self.is_slave == True:
-                continue
             if self.is_commond == True: # 如果接收到了命令，则停止当前控制
                 continue
             try:
@@ -187,7 +187,6 @@ class LinkerHandO20(Node):
                     else:
                         msg = self.joint_state_msg(pose=aligned_range, vel=self.all_speed)
                         self.hand_state_pub.publish(msg)
-                if self.hand_info_pub.get_subscription_count() > 0:
                     if self.count % 4 == 0: # 获取手指状态电流值
                         tmp_current = self.hand.get_all_current()
                         self.all_current = [tmp_current[k+1] for k in IDX_MAP]

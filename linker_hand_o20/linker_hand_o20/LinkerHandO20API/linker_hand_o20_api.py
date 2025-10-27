@@ -64,23 +64,30 @@ class LinkerHandO20API:
             self.motor_limit = MOTOR_LIMIT_LEFT
         self.hand = LinerHandO20U2D2(port=port)
         self.is_teleoperated = False
-        self.ids = self._connect()
+        self._connect()
 
     def _connect(self)->list:
         ColorMsg(msg=f"{self.hand_type}-扫描电机中....", color="green")
-        ids = self.hand.scan_ids(print_progress=True)
-        if len(ids) != 0:
-            # 设置电流
-            self.hand.set_currents_safe()
-            time.sleep(1)
-            self.hand.set_torques(True)
-        for id in range(len(ids)):
-            a = self.hand.read_torque(ids[id])
-            if a == True:
-                ColorMsg(msg=f"电机ID:{self.hand_type}-{ids[id]} 以在线，扭矩设置成功", color="green")
-            else:
-                ColorMsg(msg=f"电机ID:{self.hand_type}-{ids[id]} 扭矩设置失败", color="red")
-        return ids
+        self.ids = self.hand.scan_ids(print_progress=True)
+        if len(self.ids) != 0:
+            # 1 电机全部失能
+            self.motor_disable_all()
+            time.sleep(0.5)
+            # 1.1 设置电流，需要断电重启
+            # self.hand.set_currents_safe()
+            # 2 电机切换到电流位置模式 
+            self.set_all_current_position_mode()
+            time.sleep(0.5)
+            # 3 电机全部使能
+            self.motor_enable_all()
+
+        # for id in range(len(self.ids)):
+        #     a = self.hand.read_torque(self.ids[id])
+        #     if a == True:
+        #         ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 以在线，扭矩设置成功", color="green")
+        #     else:
+        #         ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 扭矩设置失败", color="red")
+
 
     def motor_enable_all(self):
         """所有电机使能"""
@@ -183,13 +190,13 @@ class LinkerHandO20API:
         return max(0.0, min(255.0, ratio * 255.0))
     """===========================设置方法===================================="""
     #set_currents
-    def set_currents(self, currents: Dict[int, int]) -> None:
-        # if len(currents) < 20:
-        #     raise ValueError(f"数据长度错误:{currents}")
-        self.hand.set_currents_sync(curr=currents)
-    def set_currents_safe(self):
-        """设置默认电流为80% 尽量不让电机过流失能"""
-        self.hand.set_currents_safe()
+    # def set_currents(self, currents: Dict[int, int]) -> None:
+    #     # if len(currents) < 20:
+    #     #     raise ValueError(f"数据长度错误:{currents}")
+    #     self.hand.set_currents_sync(curr=currents)
+    # def set_currents_safe(self):
+    #     """设置默认电流为80% 尽量不让电机过流失能"""
+    #     self.hand.set_currents_safe()
 
     def set_position(self,position: Dict[int, float]) -> None:
         if len(position) < 20:
@@ -252,7 +259,10 @@ class LinkerHandO20API:
     def clear_error(self, motor_id: int) -> bool:
         
         return self.hand.clear_error(motor_id=motor_id)
-
+    def set_all_current_position_mode(self) -> None:
+        """批量切换到电流-位置模式（0x05）"""
+        ColorMsg(msg="切换至电流-位置模式", color="yellow")
+        self.hand.set_all_current_position_mode()
 
     def disconnect(self):
         try:

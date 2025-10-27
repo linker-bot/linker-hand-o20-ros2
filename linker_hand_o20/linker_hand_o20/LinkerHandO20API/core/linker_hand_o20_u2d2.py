@@ -22,6 +22,7 @@ ADDR_PRESENT_VOLTAGE    = 144
 ADDR_PRESENT_TEMP       = 146
 ADDR_MOVING             = 122
 ADDR_MIN_VOLTAGE_LIMIT  = 34
+ADDR_PWM_LIMIT = 36
 ADDR_MAX_VOLTAGE_LIMIT  = 32
 ADDR_CURRENT_LIMIT      = 38
 ADDR_VELOCITY_LIMIT     = 44
@@ -297,6 +298,8 @@ class LinerHandO20U2D2:
         if print_progress:
             print("scan done !        ")
         return online
+    
+    
 
     # ------------------------------------------------------
     #  GroupBulkRead 读取方法，用于获取各种状态 经过验证，GroupBulkRead比GroupSyncRead速度快
@@ -578,20 +581,17 @@ class LinerHandO20U2D2:
             # 无需保留，直接销毁
 
     # ===================== 设置电流 sync =====================
-    def set_currents_sync(self, curr: Dict[int, int]) -> None:
-        """sync 设置电流 parmas:{3:200, 6:300, 11:250, 18:200, 20:300} 单位 mA 默认1100"""
-        self._sync_write_dict(curr, ADDR_GOAL_CURRENT, 2)
 
-    def set_currents_safe(self, ids: Optional[List[int]] = None):
+    def set_currents_safe(self, ids: Optional[List[int]] = None, cu: int = 230):
         """
-        批量把 Current Limit 设为额定 70 %
+        批量把 Current Limit 设为额定 mA 0-1100 mA
         默认 1-20 号，可传自己的列表
         """
         if ids is None:
             ids = list(range(1, 21))          # 整手
 
         RATED_MA = 1100                       # XC330 额定 1.1 A，按型号改
-        limit_ma = int(RATED_MA * 0.8)        # 770 mA
+        limit_ma = int(cu)        # 110 mA
 
         # 16 个一组，避免协议帧上限
         for i in range(0, len(ids), 16):
@@ -599,6 +599,7 @@ class LinerHandO20U2D2:
             self._sync_write_dict({cid: limit_ma for cid in chunk},
                                 ADDR_CURRENT_LIMIT, 2)
         #print(f"Current Limit 60 % → {limit_ma} mA 已下发到 ID {ids}", flush=True)
+
         
 
     # ===================== 设置扭矩 sync =====================
@@ -636,27 +637,6 @@ class LinerHandO20U2D2:
 
     
 
-    def recover_id(self, motor_id: int, tries: int = 2) -> bool:
-        """
-        尝试让单个电机重新上线
-        返回 True  -> 已恢复
-        返回 False -> 物理掉线，需要人工检查
-        """
-        for _ in range(tries):
-            # 1. 先 ping
-            _, res, err = self.pack_h.ping(self.port_h, motor_id)
-            if res == COMM_SUCCESS and err == 0:
-                return True          # 本来就在线
-            # 2. 软复位总线
-            self.port_h.closePort()
-            time.sleep(0.01)
-            if not self.port_h.openPort():
-                continue             # 串口被拔掉等极端情况
-            # 3. 再 ping 一次
-            _, res, err = self.pack_h.ping(self.port_h, motor_id)
-            if res == COMM_SUCCESS and err == 0:
-                return True
-        return False
 
 
     def set_velocity_limits(self, limit_dict: Dict[int, float]) -> None:  
@@ -691,7 +671,53 @@ class LinerHandO20U2D2:
         return data
 
     
-    
+    # ========== 单个/批量重启（协议 0x08） ==========
+    def reboot(self, motor_ids: Union[int, list], blocking: bool = True, timeout: float = 1.0) -> None:
+        """
+        发送 Reboot(0x08) 指令并等待重新上线
+        motor_ids : 单个 ID 或 ID 列表
+        blocking  : True=阻塞直到 ping 通；False=发完就返回
+        timeout   : 单台最长等待（秒）
+        """
+        if isinstance(motor_ids, int):
+            motor_ids = [motor_ids]
+
+        pkt = PacketHandler(2)
+        for cid in motor_ids:
+            res, err = pkt.reboot(self.port_h, cid)   # 官方已封装
+            if res != COMM_SUCCESS:
+                raise RuntimeError(f"ID{cid} 重启失败：{pkt.getTxRxResult(res)}")
+            if err != 0:
+                raise RuntimeError(f"ID{cid} 返回错误：{pkt.getRxPacketError(err)}")
+
+        if not blocking:
+            return
+
+        # 阻塞等待全部重新上线
+        t0 = time.time()
+        remain = set(motor_ids)
+        while remain:
+            if time.time() - t0 > timeout * len(motor_ids):
+                raise RuntimeError(f"ID {sorted(remain)} 重启后未上线")
+            for cid in list(remain):
+                _, res, err = pkt.ping(self.port_h, cid)
+                if res == COMM_SUCCESS and err == 0:
+                    remain.discard(cid)
+            time.sleep(0.02)
+
+
+    def set_all_current_position_mode(self, ids: List[int] = None) -> None:
+        """
+        批量切换到电流-位置模式（0x05）
+        默认 1-20 号，可自定义列表
+        """
+        if ids is None:
+            ids = list(range(1, 21))
+        self._sync_write_dict({i: 0x05 for i in ids}, 11, 1)
+        time.sleep(0.1)
+        # 3. 批量重启（软重启）
+        self.reboot(ids, blocking=True, timeout=1.2)
+        time.sleep(0.1)
     
 
 

@@ -80,7 +80,6 @@ class LinkerHandO20(Node):
             self.hand_state_pub = self.create_publisher(JointState, f'/cb_{self.hand_type}_hand_state', 10)
             self.hand_cmd_sub = self.create_subscription(JointState, f"/cb_{self.hand_type}_hand_control_cmd", self.hand_control_cb, 1)
         self.hand_info_pub = self.create_publisher(String, f'/cb_{self.hand_type}_hand_info', 10)
-        self.hand_touch_pub = self.create_publisher(Int32MultiArray, f'/cb_{self.hand_type}_hand_touch', 10)
         self.hand_setting_sub = self.create_subscription(String, f"/cb_hand_setting", self.hand_setting_cb, 10)
         self.hand=LinkerHandO20API(port=self.serial_port, hand_type=self.hand_type)
         time.sleep(1)
@@ -95,6 +94,7 @@ class LinkerHandO20(Node):
             ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}未检测到触摸传感器", color="red")
         elif self.hand_touch_type == 1:
             ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}已检测到单点式触摸传感器", color="green")
+            self.hand_touch_pub = self.create_publisher(Int32MultiArray, f'/cb_{self.hand_type}_hand_touch', 10)
         if self.is_slave == True:
             ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}当前为遥操从动端模式", color="yellow")
 
@@ -169,7 +169,7 @@ class LinkerHandO20(Node):
         except Exception as e:
             print(e)
         if self.is_slave == False:
-            time.sleep(0.06)
+            time.sleep(0.01)
 
 
     def hand_control_cb_angle(self, msg):

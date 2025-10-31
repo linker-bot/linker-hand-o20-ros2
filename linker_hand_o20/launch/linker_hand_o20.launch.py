@@ -10,7 +10,7 @@ def generate_launch_description():
             name='linker_hand_o20',
             output='screen',
             parameters=[{
-                'serial_port': '/dev/ttyUSB0',
+                'serial_port': '/dev/O20_right',
                 'hand_type': 'right',  # 配置Linker Hand灵巧手类型 left | right
                 'hand_joint': "O20",
                 'topic_hz': 10, # topic发布频率

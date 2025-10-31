@@ -594,7 +594,7 @@ class LinerHandO20U2D2:
 
     # ===================== 设置电流 sync =====================
 
-    def set_currents_safe(self, ids: Optional[List[int]] = None, cu: int = 450):
+    def set_currents_safe(self, ids: Optional[List[int]] = None, cu: int = 550):
         """
         批量把 Current Limit 设为额定 mA 0-1100 mA
         默认 1-20 号，可传自己的列表

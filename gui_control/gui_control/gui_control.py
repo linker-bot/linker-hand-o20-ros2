@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont
 
 from .utils.mapping import *
+from .config.constants import _HAND_CONFIGS
 
 INTERVAL = 1000  #循环动作间隔时间
 # 配置和常量定义
@@ -27,104 +28,7 @@ class HandConfig:
     init_pos: List[int] = None
     preset_actions: Dict[str, List[int]] = None
 
-    @classmethod
-    def from_hand_type(cls, hand_type: str) -> 'HandConfig':
-        """根据手部类型创建配置"""
-        hand_configs = {
-            "L25": cls(
-                joint_names=["大拇指根部", "食指根部", "中指根部", "无名指根部", "小拇指根部",
-                             "大拇指侧摆", "食指侧摆", "中指侧摆", "无名指侧摆", "小拇指侧摆",
-                             "大拇指横滚", "预留", "预留", "预留", "预留", "大拇指中部", "食指中部",
-                             "中指中部", "无名指中部", "小拇指中部", "大拇指指尖", "食指指尖",
-                             "中指指尖", "无名指指尖", "小拇指指尖"],
-                init_pos=[255] * 25,
-                preset_actions={
-                    "握拳": [0] * 25,
-                    "张开": [255] * 25,
-                    "OK": [255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-                           255, 255, 255, 255, 255, 255, 0, 0, 255, 255,
-                           0, 0, 0, 255, 255]
-                }
-            ),
-            "L21": cls(
-                joint_names=["大拇指根部", "食指根部", "中指根部", "无名指根部", "小拇指根部",
-                             "大拇指侧摆", "食指侧摆", "中指侧摆", "无名指侧摆", "小拇指侧摆",
-                             "大拇指横滚", "预留", "预留", "预留", "预留", "大拇指中部", "预留",
-                             "预留", "预留", "预留", "大拇指指尖", "食指指尖", "中指指尖",
-                             "无名指指尖", "小拇指指尖"],
-                init_pos=[255] * 25
-            ),
-            "L20": cls(
-                joint_names=["拇指根部", "食指根部", "中指根部", "无名指根部", "小指根部",
-                             "拇指侧摆", "食指侧摆", "中指侧摆", "无名指侧摆", "小指侧摆",
-                             "拇指横摆", "预留", "预留", "预留", "预留", "拇指尖部", "食指末端",
-                             "中指末端", "无名指末端", "小指末端"],
-                init_pos=[255, 255, 255, 255, 255, 255, 10, 100, 180, 240, 245, 255, 255, 255, 255, 255, 255, 255, 255,
-                          255],
-                preset_actions={
-                    "握拳": [40, 0, 0, 0, 0, 131, 10, 100, 180, 240, 19, 255, 255, 255, 255, 135, 0, 0, 0, 0],
-                    "张开": [255, 255, 255, 255, 255, 255, 10, 100, 180, 240, 245, 255, 255, 255, 255, 255, 255, 255,
-                             255, 255],
-                    "OK": [191, 95, 255, 255, 255, 136, 107, 100, 180, 240, 72, 255, 255, 255, 255, 116, 99, 255, 255,
-                           255],
-                    "点赞": [255, 0, 0, 0, 0, 127, 10, 100, 180, 240, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0]
-                }
-            ),
-            "L10": cls(
-                joint_names=["拇指根部", "拇指侧摆", "食指根部", "中指根部", "无名指根部",
-                             "小指根部", "食指侧摆", "无名指侧摆", "小指侧摆", "拇指旋转"],
-                init_pos=[255] * 10,
-                preset_actions={
-                    "握拳": [75, 128, 0, 0, 0, 0, 128, 128, 128, 57],
-                    "张开": [255, 128, 255, 255, 255, 255, 128, 128, 128, 128],
-                    "OK": [110, 128, 75, 255, 255, 255, 128, 128, 128, 68],
-                    "点赞": [255, 145, 0, 0, 0, 0, 0, 255, 255, 65]
-                }
-            ),
-            "L7": cls(
-                joint_names=["大拇指弯曲", "大拇指横摆", "食指弯曲", "中指弯曲", "无名指弯曲",
-                             "小拇指弯曲", "拇指旋转"],
-                init_pos=[250] * 7,
-                preset_actions={
-                    "握拳": [71, 79, 0, 0, 0, 0, 64],
-                    "张开": [255, 111, 250, 250, 250, 250, 55],
-                    "OK": [141, 111, 168, 250, 250, 250, 86],
-                    "点赞": [255, 111, 0, 0, 0, 0, 86]
-                }
-            ),
-            "L6": cls(
-                joint_names_en=["index_mcp_pitch", "middle_mcp_pitch", "pinky_mcp_pitch", "ring_mcp_pitch",
-                                "thumb_cmc_yaw", "thumb_cmc_pitch"],
-                joint_names=["大拇指弯曲", "大拇指横摆", "食指弯曲", "中指弯曲", "无名指弯曲",
-                             "小拇指弯曲"],
-                init_pos=[250] * 6,
-            ),
-            "O20": cls(
-                joint_names_en=["Thumb_Base","Index_Finger_Base","Middle_Finger_Base","Ring_Finger_Base","Little_Finger_Base",
-"Thumb_Abduction","Index_Finger_Abduction","Middle_Finger_Abduction","Ring_Finger_Abduction","Little_Finger_Abduction",
-"Thumb_Rotation","Index_Finger_Middle","Middle_Finger_Middle","Ring_Finger_Middle","Little_Finger_Rotation",
-"Thumb_Tip","Index_Finger_Distal","Middle_Finger_Distal","Ring_Finger_Distal","Little_Finger_Tip"],
-                joint_names=["拇指根部", "食指根部", "中指根部", "无名指根部", "小指根部",
-                             "拇指侧摆", "食指侧摆", "中指侧摆", "无名指侧摆", "小指侧摆",
-                             "拇指旋转", "食指中部", "中指中部", "无名指中部", "小拇指旋转",
-                             "拇指尖部", "食指末端", "中指末端", "无名指末端", "小指末端"],
-                init_pos=[255, 255, 255, 255, 255, 108, 122, 135, 156, 191, 255, 255, 254, 255, 88, 255, 255, 255, 255, 255],
-                #init_pos = [180] * 20,
-                preset_actions={
-                    "虎爪": [255, 255, 255, 255, 255, 108, 255, 110, 0, 0, 255, 255, 254, 255, 88, 0, 0, 0, 0, 0],
-                    "张开": [255, 255, 255, 255, 255, 108, 122, 135, 156, 191, 255, 255, 254, 255, 88, 255, 255, 255, 255, 255],
-                    "握拳1": [255, 77, 77, 120, 0, 108, 122, 138, 156, 214, 255, 0, 0, 0, 0, 255, 0, 0, 0, 0],
-                    "握拳": [131, 77, 77, 120, 0, 108, 122, 131, 156, 214, 197, 0, 0, 0, 0, 111, 0, 0, 0, 0],
-                    #"打招呼": [131, 77, 255, 120, 0, 108, 122, 246, 156, 214, 197, 0, 255, 0, 0, 111, 0, 255, 0, 0],
-                    "Ye": [131, 255, 255, 120, 0, 108, 219, 134, 156, 214, 197, 255, 255, 0, 0, 111, 255, 255, 0, 0],
-                    "棒!": [202, 77, 77, 120, 0, 255, 220, 162, 156, 214, 255, 0, 0, 0, 0, 255, 0, 0, 0, 0],
-                },
-                # preset_actions_left = {
-                #     "握拳1": [255, 25, 25, 32, 0, 111, 155, 145, 194, 180, 211, 0, 0, 0, 255, 210, 0, 0, 0, 65],
-                # }
-            ),
-        }
-        return hand_configs.get(hand_type.upper(), hand_configs["L10"])
+    
 
 
 class ROS2NodeManager(QObject):
@@ -196,7 +100,7 @@ class ROS2NodeManager(QObject):
             # self.joint_state.velocity = [0.1] * len(positions)
             # self.joint_state.effort = [0.01] * len(positions)
             # 如果有关节名称，添加到消息中
-            hand_config = HandConfig.from_hand_type(self.hand_joint)
+            hand_config = _HAND_CONFIGS[self.hand_joint]
             if len(hand_config.joint_names) == len(positions):
                 if hand_config.joint_names_en != None:
                     self.joint_state.name = hand_config.joint_names_en
@@ -268,7 +172,7 @@ class HandControlGUI(QWidget):
         # 获取手部配置
         self.hand_joint = self.ros_manager.hand_joint
         self.hand_type = self.ros_manager.hand_type
-        self.hand_config = HandConfig.from_hand_type(self.hand_joint)
+        self.hand_config = _HAND_CONFIGS[self.hand_joint]
 
         # 初始化UI
         self.init_ui()
@@ -737,7 +641,7 @@ class HandControlGUI(QWidget):
     def on_joint_type_changed(self, joint_type: str):
         """关节类型改变事件处理"""
         self.hand_joint = joint_type
-        self.hand_config = HandConfig.from_hand_type(joint_type)
+        self.hand_config = _HAND_CONFIGS[self.hand_joint]
 
         # 更新手部信息
         info_text = f"""手部类型: {self.hand_type}

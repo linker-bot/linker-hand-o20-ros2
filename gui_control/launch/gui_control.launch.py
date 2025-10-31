@@ -10,7 +10,7 @@ def generate_launch_description():
             name='left_hand_control_node',
             output='screen',
             parameters=[{
-                'hand_type': 'left',  # 配置Linker Hand灵巧手类型 left | right
+                'hand_type': 'right',  # 配置Linker Hand灵巧手类型 left | right
                 'hand_joint': "O20",
                 'topic_hz': 20, # topic发布频率
                 'is_touch': False, # 是否有压力传感器

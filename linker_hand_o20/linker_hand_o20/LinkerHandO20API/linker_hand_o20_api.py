@@ -50,8 +50,8 @@ MOTOR_LIMIT_RIGHT = {
     14: [90.1, 180, 272.3, -1],
     15: [270.7, 270, 177.6, -1],
     16: [193.3, 180, 143.0, 1],
-    17: [270.1, 180, 89.2, -1],
-    18: [270.6, 180, 88.9, -1],
+    17: [88.07, 180, 271.58, -1],
+    18: [87.71, 180, 270.7, -1],
     19: [119.5, 180, 271.5, -1],
     20: [331.0, 180, 149.0, 1],
 }
@@ -255,6 +255,19 @@ class LinkerHandO20API:
     # def set_speed(self,speed={}):
     #     self.hand.set_velocity_limits(limit_dict=speed)
     
+    def get_touch_type(self):
+        """获取压感类型"""
+        touch_type = self.hand.read_force_all()
+        if all(x == -1 for x in touch_type):
+            return -1
+        else:
+            return 1
+        
+    def get_touch(self):
+        """获取压感信息"""
+        return self.hand.read_force_all()
+    
+
 
     def clear_error(self, motor_id: int) -> bool:
         

@@ -9,7 +9,7 @@ import serial.tools
 import serial.tools.list_ports
 import numpy as np
 from rclpy.node import Node                      # ROS2 节点类
-from std_msgs.msg import String, Header, Float32MultiArray
+from std_msgs.msg import String, Header, Float32MultiArray, Int32MultiArray
 from sensor_msgs.msg import JointState
 from datetime import datetime
 from threading import Lock
@@ -60,6 +60,8 @@ class LinkerHandO20(Node):
         self.all_temperature = [-1] * 20
         self.all_voltage = [-1] * 20
         self.all_torque = [-1] * 20
+        self.all_touch = [-1] * 5
+        self.all_speed = [0] * 20
         self.hz = 1.0 / int(self.topic_hz)
         self.count = 0
         self._init_hand()
@@ -78,6 +80,7 @@ class LinkerHandO20(Node):
             self.hand_state_pub = self.create_publisher(JointState, f'/cb_{self.hand_type}_hand_state', 10)
             self.hand_cmd_sub = self.create_subscription(JointState, f"/cb_{self.hand_type}_hand_control_cmd", self.hand_control_cb, 1)
         self.hand_info_pub = self.create_publisher(String, f'/cb_{self.hand_type}_hand_info', 10)
+        self.hand_touch_pub = self.create_publisher(Int32MultiArray, f'/cb_{self.hand_type}_hand_touch', 10)
         self.hand_setting_sub = self.create_subscription(String, f"/cb_hand_setting", self.hand_setting_cb, 10)
         self.hand=LinkerHandO20API(port=self.serial_port, hand_type=self.hand_type)
         time.sleep(1)
@@ -87,6 +90,11 @@ class LinkerHandO20(Node):
         self.thread_get_state.daemon = True
         self.thread_get_state.start()
         ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}初始化成功", color="green")
+        self.hand_touch_type = self.hand.get_touch_type()
+        if self.hand_touch_type == -1:
+            ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}未检测到触摸传感器", color="red")
+        elif self.hand_touch_type == 1:
+            ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}已检测到单点式触摸传感器", color="green")
         if self.is_slave == True:
             ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}当前为遥操从动端模式", color="yellow")
 
@@ -178,25 +186,31 @@ class LinkerHandO20(Node):
                     state_angle, state_range = self.hand.get_status(range=True)
                     aligned_angle = [state_angle[k+1] for k in IDX_MAP]
                     aligned_range   = [state_range[k+1]   for k in IDX_MAP]
-                    if self.count % 3 == 0:
-                        tmp_speed = self.hand.get_all_velocity()
-                        self.all_speed = [round(abs(tmp_speed[k+1]), 2) for k in IDX_MAP]
                     if self.is_angle == True:
                         msg = self.joint_state_msg(pose=aligned_angle, vel=self.all_speed)
                         self.hand_state_pub_angle.publish(msg)
                     else:
                         msg = self.joint_state_msg(pose=aligned_range, vel=self.all_speed)
                         self.hand_state_pub.publish(msg)
-                    if self.count % 4 == 0: # 获取手指状态电流值
+                    if self.count % 3 == 0:
+                        tmp_speed = self.hand.get_all_velocity()
+                        self.all_speed = [round(abs(tmp_speed[k+1]), 2) for k in IDX_MAP]
+                    
+                    elif self.count % 4 == 0: # 获取手指状态电流值
                         tmp_current = self.hand.get_all_current()
                         self.all_current = [tmp_current[k+1] for k in IDX_MAP]
-                    if self.count == 10: # 获取手指状态温度值
+                    elif self.count % 5 == 0 and self.hand_touch_type == 1: # 获取手指压感
+                        self.all_touch = self.hand.get_touch()
+                        touch_msg = Int32MultiArray()
+                        touch_msg.data = self.all_touch
+                        self.hand_touch_pub.publish(touch_msg)
+                    elif self.count == 10: # 获取手指状态温度值
                         tmp_temperature = self.hand.get_all_temperature()
                         self.all_temperature = [tmp_temperature[k+1] for k in IDX_MAP]
-                    if self.count == 15: # 获取手指状态扭矩值
+                    elif self.count == 15: # 获取手指状态扭矩值
                         tmp_torque = self.hand.get_all_torque()
                         self.all_torque = [tmp_torque[k+1] for k in IDX_MAP]
-                    if self.count == 20: # 获取手指状态电压值
+                    elif self.count == 20: # 获取手指状态电压值
                         tmpl_voltage = self.hand.get_all_voltage()
                         self.all_voltage = [tmpl_voltage[k+1] for k in IDX_MAP]
                         self.count = 0
@@ -215,7 +229,7 @@ class LinkerHandO20(Node):
             except:
                 pass
             self.count += 1
-            time.sleep(0.03)
+            time.sleep(0.01)
         
     
 

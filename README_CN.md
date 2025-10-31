@@ -220,12 +220,14 @@ $ ros2 launch gui_control gui_control.launch.py
 /cb_left_hand_control_cmd_angle # 控制左手运动话题 by angle 0°~360° (角度) 
 /cb_left_hand_info  # 左手硬件信息显示话题
 /cb_left_hand_state # 左手状态显示话题 范围
+/cb_left_hand_touch # 左手单点压感话题 单位 g
 /cb_left_hand_state_angle # 左手状态显示话题 角度
 
 /cb_right_hand_control_cmd # 控制右手运动话题 by range 0~255 (范围)
 /cb_right_hand_control_cmd_angle # 控制右手运动话题 by angle 0°~360° (角度)
 /cb_right_hand_info # 右手硬件信息显示话题
 /cb_right_hand_state # 右手状态显示话题 范围
+/cb_right_hand_touch # 右手单点压感话题 单位 g
 /cb_right_hand_state_angle # 右手状态显示话题 角度
 ```
 

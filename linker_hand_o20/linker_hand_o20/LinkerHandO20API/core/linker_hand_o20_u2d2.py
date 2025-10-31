@@ -50,6 +50,15 @@ ADDR_VEL_I_GAIN = 76
 ADDR_CUR_P_GAIN = 74
 ADDR_CUR_I_GAIN = 72
 
+ # 固定帧（21-25），直接下发
+RAW_FRAMES = {
+    21: bytes.fromhex('FF FF FD 00 21 07 00 02 90 00 02 00 D7 11'),
+    22: bytes.fromhex('FF FF FD 00 22 07 00 02 90 00 02 00 DD 21'),
+    23: bytes.fromhex('FF FF FD 00 23 07 00 02 90 00 02 00 DB 31'),
+    24: bytes.fromhex('FF FF FD 00 24 07 00 02 90 00 02 00 C9 41'),
+    25: bytes.fromhex('FF FF FD 00 25 07 00 02 90 00 02 00 CF 51'),
+}
+
 
 # ===================================================================
 class LinerHandO20U2D2:
@@ -62,6 +71,9 @@ class LinerHandO20U2D2:
         xc.set_angle(5, 90)                     # 转到 90°
         data = xc.read_all(ids)                 # 批量读
     """
+
+
+   
 
     def __init__(self, port: str = "/dev/ttyUSB0", baud: int = DEFAULT_BAUD):
         self.port_h = PortHandler(port)
@@ -582,7 +594,7 @@ class LinerHandO20U2D2:
 
     # ===================== 设置电流 sync =====================
 
-    def set_currents_safe(self, ids: Optional[List[int]] = None, cu: int = 230):
+    def set_currents_safe(self, ids: Optional[List[int]] = None, cu: int = 450):
         """
         批量把 Current Limit 设为额定 mA 0-1100 mA
         默认 1-20 号，可传自己的列表
@@ -729,6 +741,51 @@ class LinerHandO20U2D2:
             return True
         except:
             return False
+        
+
+    # ------------------------------------------------------
+    #  O20P 力传感器（1 M，共用总线）—— 零拼接版本
+    # ------------------------------------------------------
+
+    def _tx_rx_force(self, frame: bytes) -> bytes:
+        #print('TX:', frame.hex(' ').upper())
+        self.port_h.clearPort()
+        self.port_h.writePort(frame)
+        time.sleep(0.02)          # 3 ms 保险
+        ans = self.port_h.readPort(30)  # 多读点，防粘包
+        time.sleep(0.013)
+        #print('RX:', ans.hex(' ').upper() if ans else 'None')
+        return ans
+
+    def read_force(self, dev_id: int) -> int:
+        '''
+        21: bytes.fromhex('FF FF FD 00 21 07 00 02 90 00 02 00 D7 11'),
+        22: bytes.fromhex('FF FF FD 00 22 07 00 02 90 00 02 00 DD 21'),
+        23: bytes.fromhex('FF FF FD 00 23 07 00 02 90 00 02 00 DB 31'),
+        24: bytes.fromhex('FF FF FD 00 24 07 00 02 90 00 02 00 C9 41'),
+        25: bytes.fromhex('FF FF FD 00 25 07 00 02 90 00 02 00 CF 51'),
+        '''
+        if dev_id not in RAW_FRAMES:
+            return -1                      # 无固定帧也归 -1
+        ans = self._tx_rx_force(RAW_FRAMES[dev_id])
+        if not ans or len(ans) < 12:
+            #print(f'ID{dev_id} 空包或太短，跳过')
+            return -1                      # 空包 → -1
+        idx = ans.find(b'\x55\x00')
+        if idx == -1 or len(ans) < idx + 4:
+            #print(f'ID{dev_id} 无合法状态，跳过')
+            return -1                      # 无状态 → -1
+        force = int.from_bytes(ans[idx+2:idx+4], 'little', signed=True)
+        return force
+
+    def read_force_all(self, ids: List[int] = list(range(21, 26))) -> List[int]:
+        """返回 List[int]，顺序与 ids 一致，无应答 = -1"""
+        return [self.read_force(i) if i in RAW_FRAMES else -1 for i in ids]
+
+    def set_force_id(self, old_id: int, new_id: int):
+        raise NotImplementedError('固定帧版本不提供改 ID 功能')
+
+    
 
     # ------------------------------------------------------
     #  关闭串口
@@ -742,10 +799,19 @@ class LinerHandO20U2D2:
 
 
 if __name__ == "__main__":
-    hand = LinerHandO20U2D2(port="/dev/O20_right", baud=1000000)
+    hand = LinerHandO20U2D2(port="/dev/ttyUSB0", baud=1000000)
     ids = hand.scan_ids(print_progress=True)
-    hand.set_torques(True)
-    t0 = time.time()
+    angles = hand.read_all_angle_sync_safe(ids)
+    print(angles)
+    # hand.set_torques(True)
+    # t0 = time.time()
+    # 1. 读指尖力（传感器 ID=0x02）
+    print('ID25 压力:', hand.read_force(25), 'g')
+    # 批量读 21-25
+    data = hand.read_force_all([21,22,23,24,25])
+    # print(data, flush=True)
+    for i, g in enumerate(data, 21):
+        print(f'ID{i}: {g} g')
     # ==========================GroupBulkRead===================================
     '''
     # ==== GroupBulkRead 读取示例 =======
@@ -798,8 +864,7 @@ if __name__ == "__main__":
 
 
     # 批量读取位置 PID
-    pid_map = hand.get_pos_pid_sync(ids)
-    print(pid_map)
+    
 
 
 

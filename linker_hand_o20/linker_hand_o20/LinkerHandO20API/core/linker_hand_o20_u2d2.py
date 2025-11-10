@@ -594,7 +594,7 @@ class LinerHandO20U2D2:
 
     # ===================== 设置电流 sync =====================
 
-    def set_currents_safe(self, ids: Optional[List[int]] = None, cu: int = 550):
+    def set_currents_safe(self, ids: Optional[List[int]] = None, cu: int = 800):
         """
         批量把 Current Limit 设为额定 mA 0-1100 mA
         默认 1-20 号，可传自己的列表
@@ -610,7 +610,7 @@ class LinerHandO20U2D2:
             chunk = ids[i:i + 16]
             self._sync_write_dict({cid: limit_ma for cid in chunk},
                                 ADDR_CURRENT_LIMIT, 2)
-        #print(f"Current Limit 60 % → {limit_ma} mA 已下发到 ID {ids}", flush=True)
+        print(f"Current Limit 60 % → {limit_ma} mA 已下发到 ID {ids}", flush=True)
 
         
 

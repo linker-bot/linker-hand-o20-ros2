@@ -7,6 +7,9 @@ import time,sys,os
 from typing import List, Dict, Optional, Union
 from .utils.colos_msg import ColorMsg
 from .core.linker_hand_o20_u2d2 import LinerHandO20U2D2
+
+
+SDK_VERSION = "1.1.1" # SDK版本号 新增使用电流位置模式
 # 电机ID对应的角度限制 {id: [min,median,max,direction]}  {ID: [最小值, 中间值, 最大值, 旋转方向]}
 # 旋转方向只作为标记，不代表实际意义
 # 最小值为正转，最大值为负转，中间值为初始点
@@ -58,6 +61,7 @@ MOTOR_LIMIT_RIGHT = {
 class LinkerHandO20API:
     def __init__(self,port: str,hand_type = "right"):
         self.hand_type = hand_type
+        self.version = SDK_VERSION
         if hand_type == "right":
             self.motor_limit = MOTOR_LIMIT_RIGHT
         else:
@@ -74,19 +78,22 @@ class LinkerHandO20API:
             self.motor_disable_all()
             time.sleep(0.5)
             # 1.1 设置电流，需要断电重启
-            # self.hand.set_currents_safe()
+            self.hand.set_currents_safe()
+            time.sleep(0.5)
             # 2 电机切换到电流位置模式 
             self.set_all_current_position_mode()
             time.sleep(0.5)
+            # 3 批量设置PID
+            pid = {}
+            for id in range(len(self.ids)):
+                pid[id+1] = {"P": 300, "I": 0, "D": 600}
+            self.set_pos_pid(pid)
+            time.sleep(1)
+            print(self.get_pos_pid(self.ids))
+            time.sleep(1)
             # 3 电机全部使能
             self.motor_enable_all()
 
-        # for id in range(len(self.ids)):
-        #     a = self.hand.read_torque(self.ids[id])
-        #     if a == True:
-        #         ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 以在线，扭矩设置成功", color="green")
-        #     else:
-        #         ColorMsg(msg=f"电机ID:{self.hand_type}-{self.ids[id]} 扭矩设置失败", color="red")
 
 
     def motor_enable_all(self):
@@ -258,7 +265,11 @@ class LinkerHandO20API:
     def get_touch_type(self):
         """获取压感类型"""
         touch_type = self.hand.read_force_all()
-        if all(x == -1 for x in touch_type):
+        tmp_count = 0
+        for touch in touch_type:
+            if touch == -1:
+                tmp_count += 1
+        if tmp_count > 3:
             return -1
         else:
             return 1

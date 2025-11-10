@@ -89,6 +89,7 @@ class LinkerHandO20(Node):
         self.thread_get_state.daemon = True
         self.thread_get_state.start()
         ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}初始化成功", color="green")
+        ColorMsg(msg=f"SDK Version: {self.hand.version}", color="green")
         self.hand_touch_type = self.hand.get_touch_type()
         if self.hand_touch_type == -1:
             ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}未检测到触摸传感器", color="red")
@@ -97,6 +98,7 @@ class LinkerHandO20(Node):
             self.hand_touch_pub = self.create_publisher(Int32MultiArray, f'/cb_{self.hand_type}_hand_touch', 10)
         if self.is_slave == True:
             ColorMsg(msg=f"{self.hand_type}_{self.hand_joint}当前为遥操从动端模式", color="yellow")
+        
 
     def hand_setting_cb(self, msg):
         # ros2 topic pub --once /cb_hand_setting std_msgs/msg/String "data: '{\"commond\":\"disable\",\"params\":{\"hand_joint\":\"o20\",\"hand_type\":\"right\"}}'"

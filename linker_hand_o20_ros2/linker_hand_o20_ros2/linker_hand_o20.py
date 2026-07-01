@@ -56,6 +56,8 @@ class LinkerHandO20(Node):
             self.hand_type = "right"
         self.ctl.start_monitoring() # 开启监听线程
         time.sleep(0.1)
+        # 校准前必须设置最大速度
+        self.ctl.set_default_velocity(10000)
         device_info = self.ctl.read_serial_number()
         time.sleep(0.1)
         self.out_info(info_dic=device_info)
@@ -73,7 +75,9 @@ class LinkerHandO20(Node):
         time.sleep(0.1)
         # 开始校准
         self.ctl.set_calibration_mode(1)
-        time.sleep(1)
+        time.sleep(10)
+        # 这里设置自定义速度。
+        self.ctl.set_default_velocity(3000)
 
     def validate_strict_non_negative_ints(self, lst):
         """校验：所有元素必须是 int 或 float 类型，且 0 < x <= 255（排除 bool/字符串/负数/0/超255）"""

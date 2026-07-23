@@ -1,4 +1,4 @@
-
+<img  src="resource/logo.png" width="800">
 
 # LinkerHand灵巧手ROS2 SDK For O20
 
@@ -41,8 +41,9 @@ V1.0.0
 
 * Python版本：V3.12
 
-* 硬件：amd64_x86/arm64 配备 USB CANFD
+* 硬件：amd64_x86/arm64 配备 USB转CANFD
 
+## 蓝色 or 黑色 CANFD设备
 
 将libcanbus用命令解压到/usr/local/lib/目录下面
 
@@ -76,7 +77,9 @@ $ sudo udevadm trigger
 ```
 重启系统。
 
-
+## 透明塑封USB转CANFD设备
+确保type-c接口下方的开关拨到Linux模式。
+无需其他操作
 
 ## 4.2 下载
 

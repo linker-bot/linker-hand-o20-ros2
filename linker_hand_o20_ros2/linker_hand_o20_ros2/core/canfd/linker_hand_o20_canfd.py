@@ -765,7 +765,274 @@ class CANFDCommunication:
         self.close()
         time.sleep(1)  # 等待1秒
         return self.initialize()
-print = lambda *_, **__: None # 禁用打印
+
+
+class SocketCANCommunication(CANFDCommunication):
+    """基于 SocketCAN (python-can) 的 CANFD 通信类
+
+    用于“透明塑封 USB 转 CANFD 设备”。该设备在 Linux 下走标准 SocketCAN，
+    无需厂商私有库（libcanbus.so），通过内核 can0 接口 + python-can 收发。
+
+    本类继承 CANFDCommunication，复用其纯逻辑方法：
+        create_frame_id / _get_dlc_from_length / query_device_type / _query_single_device
+    仅重写与底层传输相关的方法（initialize / send_message / receive_messages /
+    flush_buffer / close / check_connection / reconnect）。
+
+    协议帧格式与厂商设备完全一致（29 位扩展帧），因此上层 Controller 无需任何改动。
+    """
+
+    def __init__(self, hand_type="right", channel="can0",
+                 bitrate=500000, dbitrate=2000000, auto_setup=True):
+        self.hand_type = hand_type
+        self.channel = channel
+        self.bitrate = bitrate      # 仲裁段波特率，默认 500Kbps（透明塑封设备文档值）
+        self.dbitrate = dbitrate    # 数据段波特率，默认 2Mbps
+        self.auto_setup = auto_setup
+        self.bus = None
+        if self.hand_type == "left":
+            self.device_id = DeviceID.LEFT_HAND.value
+        else:
+            self.device_id = DeviceID.RIGHT_HAND.value
+        self.is_connected = False
+        self.dlc2len = [0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64]
+
+    def _setup_interface(self):
+        """自动配置 can0 接口（需要 sudo 权限）
+
+        等价于手动执行：
+            sudo ip link set can0 down
+            sudo ip link set can0 type can bitrate <b> dbitrate <d> fd on restart-ms 100
+            sudo ip link set can0 up
+            sudo ip link set can0 txqueuelen 1000
+        逐条容错，失败不中断（接口可能已由用户提前配置）。
+
+        注意：本模块顶部用 `print = lambda` 禁用了普通打印，因此这里的关键错误
+        与回读信息直接写到真实 stderr，保证用户能看到（波特率不匹配是常见故障）。
+        """
+        import subprocess
+        import sys as _sys
+
+        def _log(msg):
+            try:
+                _sys.__stderr__.write(msg + "\n")
+                _sys.__stderr__.flush()
+            except Exception:
+                pass
+
+        cmds = [
+            (["sudo", "ip", "link", "set", self.channel, "down"], True),
+            (["sudo", "ip", "link", "set", self.channel, "type", "can",
+              "bitrate", str(self.bitrate), "sample-point", "0.8",
+              "dbitrate", str(self.dbitrate), "dsample-point", "0.75", "fd", "on"], True),
+            (["sudo", "ip", "link", "set", self.channel, "up"], True),
+        ]
+        for c, required in cmds:
+            try:
+                ret = subprocess.run(c, check=False, timeout=5,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if ret.returncode != 0:
+                    err = ret.stderr.decode(errors='ignore').strip()
+                    if required:
+                        _log(f"[SocketCAN] 接口配置命令失败: {' '.join(c)}\n"
+                             f"            原因: {err}")
+                    else:
+                        _log(f"[SocketCAN] 提示: 该设备不支持的可选项已跳过: {' '.join(c)} ({err})")
+                time.sleep(0.1)  # 给内核时间完成状态切换（尤其 down 之后）
+            except Exception as e:
+                _log(f"[SocketCAN] 接口配置命令异常: {' '.join(c)} -> {e}")
+
+        # 回读实际生效的时序与状态，便于定位波特率不匹配 / BUS-OFF
+        try:
+            ret = subprocess.run(["ip", "-details", "link", "show", self.channel],
+                                 check=False, timeout=5,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out = ret.stdout.decode(errors='ignore')
+            timing = next((l.strip() for l in out.splitlines() if "bitrate" in l), "(未读到)")
+            state = next((l.strip() for l in out.splitlines() if "state" in l), "")
+            _log(f"[SocketCAN] 期望 bitrate={self.bitrate} dbitrate={self.dbitrate}\n"
+                 f"            实际生效: {timing}\n"
+                 f"            状态行  : {state}")
+            if "BUS-OFF" in state or "ERROR-PASSIVE" in state:
+                _log("[SocketCAN] ⚠️ 总线处于错误状态，通常是波特率与设备不一致或接线/终端电阻问题。")
+        except Exception:
+            pass
+
+    def initialize(self) -> bool:
+        """初始化 SocketCAN 通信"""
+        try:
+            import can
+        except ImportError:
+            print("❌ 缺少 python-can 库，请执行: pip install python-can")
+            return False
+
+        try:
+            print("=" * 50, flush=True)
+            print(f"开始初始化 SocketCAN 设备 (通道: {self.channel})...")
+
+            # 自动拉起接口
+            if self.auto_setup:
+                print(f"正在自动配置接口 {self.channel} "
+                      f"(bitrate={self.bitrate}, dbitrate={self.dbitrate}, fd on)...")
+                self._setup_interface()
+                time.sleep(0.2)
+
+            # 打开总线前先确认接口是否存在，避免 python-can 抛出难懂的异常
+            if not os.path.exists(f"/sys/class/net/{self.channel}"):
+                import sys as _sys
+                msg = (f"[SocketCAN] ❌ 未找到网络接口 {self.channel}。\n"
+                       f"            该透明塑封设备需拨到 Linux 模式才会枚举为原生 CAN 接口；\n"
+                       f"            若 lsusb 显示为 'STM32 Virtual ComPort' 则说明仍是串口模式。\n"
+                       f"            请：1) 将 type-c 下方开关拨到 Linux 模式  2) 重新插拔USB\n"
+                       f"               3) 用 `ip -br link show type can` 确认 {self.channel} 出现")
+                try:
+                    _sys.__stderr__.write(msg + "\n"); _sys.__stderr__.flush()
+                except Exception:
+                    pass
+                self.is_connected = False
+                self.bus = None
+                return False
+
+            # 打开 CANFD 总线
+            self.bus = can.interface.Bus(channel=self.channel,
+                                         interface='socketcan', fd=True)
+            self.is_connected = True
+            print(f"✅ SocketCAN 通道 {self.channel} 打开成功")
+            print("✅ SocketCAN 通信初始化完成")
+            print("=" * 50)
+            return True
+
+        except Exception as e:
+            print(f"❌ SocketCAN 初始化失败: {e}")
+            print("   请检查:")
+            print(f"   1. 设备是否接入、type-c 下方开关是否拨到 Linux 模式")
+            print(f"   2. 接口 {self.channel} 是否存在 (ip -br link show type can)")
+            print(f"   3. 是否具备 sudo 权限以自动配置接口")
+            self.is_connected = False
+            self.bus = None
+            return False
+
+    def send_message(self, register_addr: int, data: bytes, is_write: bool = True,
+                     target_device_id: Optional[int] = None) -> bool:
+        """发送 CANFD 消息（SocketCAN）"""
+        if not self.is_connected or self.bus is None:
+            print("错误: SocketCAN 未连接")
+            return False
+
+        try:
+            import can
+            # 允许调用方覆盖目标 device_id（向后兼容）
+            device_for_frame = target_device_id if target_device_id is not None else self.device_id
+            frame_id = self.create_frame_id(device_for_frame, register_addr, is_write)
+
+            # `cansend <id>##01<data>` 中 ## 后的 01 是 CANFD 的 BRS 标志位，
+            # 已由下方 bitrate_switch=True 处理，不进入数据。
+            data = bytes(data)
+            data_len = min(len(data), 64)
+            data = data[:data_len]
+
+            # 将数据零填充到合法的 CANFD 帧长度（0-8,12,16,20,24,32,48,64）
+            dlc = self._get_dlc_from_length(data_len)
+            padded_len = self.dlc2len[dlc]
+            payload = data + b'\x00' * (padded_len - data_len)
+
+            msg = can.Message(
+                arbitration_id=frame_id,
+                is_extended_id=True,
+                is_fd=True,
+                # 关闭 BRS：实测 BRS 开启 + 5Mbps 数据段会把总线打入 BUS-OFF，
+                # 设备无法应答；BRS 关闭时数据段保持仲裁波特率，稳定收发。
+                # 对应可用的 `cansend can0 <id>##0<data>`（flags=0 即 BRS off）。
+                bitrate_switch=False,
+                data=payload,
+            )
+            self.bus.send(msg, timeout=0.2)
+
+            # 打印发送的帧和数据，格式与 candump 一致，便于核对是否正确
+            hex_data = ' '.join(f"{b:02X}" for b in payload)
+            print(f"  {self.channel}  {frame_id:08X}  [{padded_len:02d}]  {hex_data}")
+            print(f"     ✅ 消息发送成功: ID=0x{frame_id:08X}, 寄存器=0x{register_addr:02X}, "
+                  f"长度={data_len}字节")
+            return True
+
+        except Exception as e:
+            print(f"发送消息异常(SocketCAN): {e}")
+            return False
+
+    def receive_messages(self, timeout_ms: int = 100,
+                         filter_device_id: bool = True) -> List[Tuple[int, bytes]]:
+        """接收 CANFD 消息（SocketCAN）
+
+        首帧使用给定超时等待，随后以非阻塞方式排空缓冲区内现有的所有帧，
+        与厂商实现的“批量接收”语义保持一致。
+        """
+        if not self.is_connected or self.bus is None:
+            return []
+
+        messages = []
+        try:
+            timeout_s = max(0.0, timeout_ms / 1000.0)
+            msg = self.bus.recv(timeout=timeout_s)
+            while msg is not None:
+                response_device_id = (msg.arbitration_id >> 21) & 0xFF
+                register_addr = (msg.arbitration_id >> 13) & 0xFF
+                data = bytes(msg.data)
+
+                print(f"     消息: ID=0x{msg.arbitration_id:08X}, 设备=0x{response_device_id:02X}, "
+                      f"寄存器=0x{register_addr:02X}, 长度={len(data)}")
+
+                if not filter_device_id or response_device_id == self.device_id:
+                    messages.append((msg.arbitration_id, data))
+                else:
+                    print(f"     过滤掉设备0x{response_device_id:02X}的消息 "
+                          f"(当前目标设备: 0x{self.device_id:02X})")
+
+                # 继续把缓冲区中现有的帧读完（非阻塞）
+                msg = self.bus.recv(timeout=0)
+
+            return messages
+
+        except Exception as e:
+            print(f"接收消息异常(SocketCAN): {e}")
+            return messages
+
+    def flush_buffer(self):
+        """清空接收缓冲区"""
+        if not self.is_connected or self.bus is None:
+            return
+        try:
+            total = 0
+            while self.bus.recv(timeout=0) is not None:
+                total += 1
+            if total > 0:
+                print(f"     已清空接收缓冲区: 丢弃 {total} 条积压消息")
+        except Exception as e:
+            print(f"     清空缓冲区失败: {e}")
+
+    def close(self):
+        """关闭 SocketCAN 连接"""
+        if self.bus is not None:
+            try:
+                print("关闭 SocketCAN 连接...")
+                self.bus.shutdown()
+                print("SocketCAN 连接已关闭")
+            except Exception as e:
+                print(f"关闭 SocketCAN 连接失败: {e}")
+        self.is_connected = False
+        self.bus = None
+
+    def check_connection(self) -> bool:
+        """检查连接状态"""
+        return self.is_connected and self.bus is not None
+
+    def reconnect(self) -> bool:
+        """重新连接"""
+        print("尝试重新连接 SocketCAN 设备...")
+        self.close()
+        time.sleep(1)
+        return self.initialize()
+
+
+# print = lambda *_, **__: None # 禁用打印
 class DexterousHandModel:
     """灵巧手数据模型"""
 
@@ -897,8 +1164,17 @@ class DexterousHandModel:
 class LinkerHandO20Controller:
     """灵巧手控制器"""
 
-    def __init__(self,hand_type="right", canfd_device=0):
-        self.comm = CANFDCommunication(hand_type=hand_type, canfd_device=canfd_device)
+    def __init__(self, hand_type="right", canfd_device=0,
+                 comm_type="usb_canfd", can_channel="can0",
+                 can_bitrate=500000, can_dbitrate=2000000):
+        # 根据 comm_type 选择底层通信后端
+        #   "usb_canfd" : 厂商 libcanbus.so 设备（默认，向后兼容）
+        #   "socketcan" : 透明塑封 USB 转 CANFD 设备（标准 SocketCAN）
+        if comm_type == "socketcan":
+            self.comm = SocketCANCommunication(hand_type=hand_type, channel=can_channel,
+                                               bitrate=can_bitrate, dbitrate=can_dbitrate)
+        else:
+            self.comm = CANFDCommunication(hand_type=hand_type, canfd_device=canfd_device)
         self.model = DexterousHandModel()
         self.is_running = False
         self.update_thread = None

@@ -22,13 +22,22 @@ class LinkerHandO20(Node):
         self.declare_parameter('hand_joint', 'O20')
         self.declare_parameter('canfd_device', 0)
         self.declare_parameter('is_touch', False)
-       
+        # CANFD 通信后端: 'usb_canfd'=厂商libcanbus设备 | 'socketcan'=透明塑封USB转CANFD设备
+        self.declare_parameter('comm_type', 'usb_canfd')
+        self.declare_parameter('can_channel', 'can0')   # 仅 socketcan 模式使用
+        self.declare_parameter('can_bitrate', 500000)   # 仲裁段波特率(仅socketcan)
+        self.declare_parameter('can_dbitrate', 2000000) # 数据段波特率(仅socketcan)
+
 
         # 获取参数值
         self.hand_type = self.get_parameter('hand_type').value
         self.hand_joint = self.get_parameter('hand_joint').value
         self.is_touch = self.get_parameter('is_touch').value
         self.canfd_device = self.get_parameter('canfd_device').value
+        self.comm_type = self.get_parameter('comm_type').value
+        self.can_channel = self.get_parameter('can_channel').value
+        self.can_bitrate = self.get_parameter('can_bitrate').value
+        self.can_dbitrate = self.get_parameter('can_dbitrate').value
         # ros时间获取
         self.stamp_clock = Clock()
         self.info_dic = {
@@ -36,7 +45,9 @@ class LinkerHandO20(Node):
                 "current_current": [-1] * 20,
                 "error_status": [-1] * 20,
             }
-        self.ctl = LinkerHandO20Controller(hand_type=self.hand_type, canfd_device=self.canfd_device)
+        self.ctl = LinkerHandO20Controller(hand_type=self.hand_type, canfd_device=self.canfd_device,
+                                           comm_type=self.comm_type, can_channel=self.can_channel,
+                                           can_bitrate=self.can_bitrate, can_dbitrate=self.can_dbitrate)
         
         self._init_hand()
         time.sleep(0.1)
@@ -56,8 +67,6 @@ class LinkerHandO20(Node):
             self.hand_type = "right"
         self.ctl.start_monitoring() # 开启监听线程
         time.sleep(0.1)
-        # 校准前必须设置最大速度
-        self.ctl.set_default_velocity(10000)
         device_info = self.ctl.read_serial_number()
         time.sleep(0.1)
         self.out_info(info_dic=device_info)
@@ -75,9 +84,7 @@ class LinkerHandO20(Node):
         time.sleep(0.1)
         # 开始校准
         self.ctl.set_calibration_mode(1)
-        time.sleep(10)
-        # 这里设置自定义速度。
-        self.ctl.set_default_velocity(3000)
+        time.sleep(1)
 
     def validate_strict_non_negative_ints(self, lst):
         """校验：所有元素必须是 int 或 float 类型，且 0 < x <= 255（排除 bool/字符串/负数/0/超255）"""
@@ -273,19 +280,24 @@ class LinkerHandO20(Node):
         from rich.console import Console
         from rich.table import Table, box
 
+        # 设备信息读取可能失败（返回 None），此时不应崩溃，给出提示并跳过
+        if not info_dic:
+            self.get_logger().warning("设备信息读取失败（未收到响应），跳过设备信息打印。请检查 CAN 波特率/接线，灵巧手仍可正常控制。")
+            return
+
         console = Console()
         table = Table(title="Linker Hand", box=box.ROUNDED)
 
         table.add_column("product_model", style="cyan", justify="center")
-        table.add_column("serial_number", style="cyan", justify="center") 
+        table.add_column("serial_number", style="cyan", justify="center")
         table.add_column("software_version", style="magenta", justify="center")
         table.add_column("hardware_version", style="magenta", justify="center")
         table.add_column("hand_type", style="magenta", justify="center")
         table.add_column("unique_id", style="magenta", justify="center")
 
-        table.add_row(str(info_dic["product_model"]), str(info_dic["serial_number"]), str(info_dic["software_version"]),str(info_dic["hardware_version"]),str(self.hand_type),str(info_dic["unique_id"]))
+        table.add_row(str(info_dic.get("product_model")), str(info_dic.get("serial_number")), str(info_dic.get("software_version")),str(info_dic.get("hardware_version")),str(self.hand_type),str(info_dic.get("unique_id")))
         console.print(table)
-    
+
     def close(self):
         self.ctl.disconnect()
         self.ctl.close()

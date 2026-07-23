@@ -1,4 +1,4 @@
-<img  src="resource/logo.png" width="800">
+
 
 # LinkerHand灵巧手ROS2 SDK For O20
 
